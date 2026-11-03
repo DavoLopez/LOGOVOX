@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LOGOVOX - Audiobook Sync Player by David López</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        neon: {
+                            400: '#33ff80',
+                            500: '#00ff66',
+                            600: '#00cc52',
+                            glow: 'rgba(0, 255, 102, 0.25)'
+                        },
+                        darkbg: '#080a0d',
+                        darkcard: '#12161f',
+                        darkborder: '#1e2638'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts & Phosphor Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- PDF.js library for client-side PDF parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- Tesseract.js library for fallback OCR (scanned pages) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+    <style>
+        /* Estilos personalizados y animaciones para la interfaz Neón Tech */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #080a0d;
+            touch-action: manipulation;
+        }
+
+        /* Scrollbar personalizada minimalista */
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(18, 22, 31, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #00ff66;
+            border-radius: 9999px;
+        }
+
+        /* Glow effects */
+        .neon-glow {
+            box-shadow: 0 0 20px rgba(0, 255, 102, 0.25);
+        }
+        .neon-glow-lg {
+            box-shadow: 0 0 35px rgba(0, 255, 102, 0.35);
+        }
+
+        /* Resaltado de palabra/frase activa en lectura */
+        .highlight-word {
+            background-color: rgba(0, 255, 102, 0.25);
+            color: #00ff66;
+            border-bottom: 2px solid #00ff66;
+            border-radius: 4px;
+            padding: 2px 4px;
+            transition: all 0.15s ease;
+        }
+
+        /* Ecualizador animado */
+        .bar {
+            background: #00ff66;
+            width: 4px;
+            border-radius: 2px;
+            animation: bounce 0.5s ease infinite alternate;
+        }
+        .bar:nth-child(1) { animation-delay: 0.1s; height: 30%; }
+        .bar:nth-child(2) { animation-delay: 0.3s; height: 70%; }
+        .bar:nth-child(3) { animation-delay: 0.15s; height: 100%; }
+        .bar:nth-child(4) { animation-delay: 0.4s; height: 50%; }
+
+        @keyframes bounce {
+            100% { height: 15%; }
+        }
+
+        .paused .bar {
+            animation-play-state: paused;
+            height: 20% !important;
+        }
+
+        /* Drawer lateral de capítulos */
+        .drawer-slide {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col justify-between overflow-hidden text-slate-200">
+
+    <!-- Header Neón Tech / LOGOVOX -->
+    <header class="bg-darkcard/90 backdrop-blur-md border-b border-darkborder px-3 py-2 flex items-center justify-between shrink-0 z-20">
+        <div class="flex items-center space-x-2">
+            <!-- Icono Micrófono Verde Flúor -->
+            <div class="w-9 h-9 rounded-2xl bg-neon-500/10 border border-neon-500/40 flex items-center justify-center text-neon-500 neon-glow shrink-0">
+                <i class="ph-bold ph-microphone text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base tracking-wider text-white flex items-center gap-1 font-mono">
+                    LOGO<span class="text-neon-500">VOX</span>
+                </h1>
+                <p class="text-[9px] text-slate-400 font-mono tracking-widest uppercase">AI Speech Engine by DAVELOPEZ</p>
+            </div>
+        </div>
+
+        <!-- Botones Rápidos de Audio Superiores (Play, Pause, Stop) -->
+        <div id="header-audio-controls" class="hidden flex items-center space-x-1.5 bg-darkbg/80 p-1 rounded-2xl border border-darkborder">
+            <button id="hdr-play" class="w-8 h-8 rounded-xl bg-neon-500 text-darkbg flex items-center justify-center text-sm font-bold active:scale-90 transition" title="Play">
+                <i class="ph-fill ph-play"></i>
+            </button>
+            <button id="hdr-pause" class="w-8 h-8 rounded-xl bg-darkcard border border-neon-500/60 text-neon-500 flex items-center justify-center text-sm font-bold active:scale-90 transition" title="Pause">
+                <i class="ph-fill ph-pause"></i>
+            </button>
+            <button id="hdr-stop" class="w-8 h-8 rounded-xl bg-darkcard border border-red-500/50 text-red-400 flex items-center justify-center text-sm font-bold active:scale-90 transition" title="Stop">
+                <i class="ph-fill ph-stop"></i>
+            </button>
+        </div>
+
+        <div class="flex items-center space-x-1.5">
+            <!-- Menú de Capítulos -->
+            <button id="chapters-btn" class="hidden p-2 rounded-2xl bg-darkcard border border-darkborder text-slate-300 hover:text-neon-500 hover:border-neon-500/50 transition relative" title="Lista de Capítulos">
+                <i class="ph-bold ph-list-bullets text-lg"></i>
+                <span id="chapters-count-badge" class="absolute -top-1 -right-1 bg-neon-500 text-darkbg text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">0</span>
+            </button>
+
+            <!-- Exportar / Importar Audio-Sesión -->
+            <button id="export-session-btn" class="hidden p-2 rounded-2xl bg-darkcard border border-darkborder text-slate-300 hover:text-neon-500 hover:border-neon-500/50 transition" title="Guardar/Exportar Audiolibro">
+                <i class="ph-bold ph-download-simple text-lg"></i>
+            </button>
+
+            <!-- Cargar PDF o Archivo LOGOVOX -->
+            <label for="pdf-input" class="cursor-pointer bg-neon-500 hover:bg-neon-400 text-darkbg font-bold p-2 sm:px-3 sm:py-1.5 rounded-2xl text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-neon-500/20 active:scale-95">
+                <i class="ph-bold ph-file-plus text-base"></i>
+                <span id="upload-btn-label" class="hidden sm:inline">Cargar</span>
+            </label>
+            <input type="file" id="pdf-input" accept="application/pdf,.logovox,json" class="hidden">
+            
+            <button id="settings-btn" class="p-2 rounded-2xl bg-darkcard border border-darkborder text-slate-300 hover:text-neon-500 hover:border-neon-500/50 transition">
+                <i class="ph-bold ph-gear text-lg"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ESTADO: Pantalla Vacía (Dropzone Inicial) -->
+    <main id="empty-state" class="flex-1 flex flex-col items-center justify-center p-6 text-center">
+        <div class="relative mb-6">
+            <div class="w-24 h-24 rounded-3xl bg-darkcard border-2 border-dashed border-neon-500/40 flex items-center justify-center text-neon-500 neon-glow">
+                <i class="ph-duotone ph-microphone text-5xl"></i>
+            </div>
+            <div class="absolute -bottom-2 -right-2 bg-neon-500 text-darkbg p-2 rounded-xl text-xs font-bold font-mono">
+                VOX
+            </div>
+        </div>
+        <h2 class="text-2xl font-bold text-white mb-2 font-mono">LOGOVOX PLAYER</h2>
+        <p class="text-xs text-slate-400 max-w-xs mb-6 leading-relaxed">
+            Sube un documento PDF o reanuda un archivo de sesión guardado (<span class="text-neon-500 font-mono">.logovox</span>) para escuchar y sincronizar la lectura.
+        </p>
+        <div class="flex flex-col gap-3 w-full max-w-xs">
+            <button onclick="document.getElementById('pdf-input').click()" class="bg-gradient-to-r from-neon-500 to-neon-600 text-darkbg font-bold px-6 py-3 rounded-2xl text-sm flex items-center justify-center gap-2 neon-glow hover:brightness-110 active:scale-95 transition">
+                <i class="ph-bold ph-upload-simple text-lg"></i>
+                Cargar PDF o Sesión LOGOVOX
+            </button>
+        </div>
+    </main>
+
+    <!-- ESTADO: Loader (Procesando PDF con barra de progreso) -->
+    <div id="loader-state" class="hidden flex-1 flex flex-col items-center justify-center p-6 text-center max-w-sm mx-auto w-full">
+        <div class="w-16 h-16 rounded-full border-4 border-darkborder border-t-neon-500 animate-spin mb-6"></div>
+        
+        <h3 class="text-base font-bold text-white mb-1">Procesando Documento</h3>
+        <p id="loader-status" class="text-xs text-slate-400 font-mono mb-4">Iniciando lectura...</p>
+
+        <!-- Barra de Progreso de Carga de Archivo -->
+        <div class="w-full bg-darkcard border border-darkborder p-1 rounded-2xl mb-2">
+            <div id="pdf-load-progress" class="bg-gradient-to-r from-neon-600 to-neon-400 h-3 rounded-xl w-0 transition-all duration-200"></div>
+        </div>
+        <span id="pdf-load-percent" class="text-xs font-mono font-bold text-neon-500">0%</span>
+
+        <!-- Botón de Ejecutar / Comenzar (Se muestra cuando se completa el 100%) -->
+        <button id="btn-execute-audiobook" class="hidden mt-6 w-full bg-neon-500 hover:bg-neon-400 text-darkbg font-bold py-3.5 px-6 rounded-2xl text-sm flex items-center justify-center gap-2 neon-glow-lg transition active:scale-95 uppercase tracking-wider">
+            <i class="ph-fill ph-play-circle text-2xl"></i>
+            Ejecutar Audiolibro
+        </button>
+    </div>
+
+    <!-- ESTADO PRINCIPAL: Vista Dividida (Split Screen) -->
+    <main id="app-view" class="hidden flex-1 flex flex-col h-full overflow-hidden">
+
+        <!-- MITAD SUPERIOR: Lector de Texto con seguimiento visual -->
+        <section class="flex-1 bg-darkbg border-b border-darkborder overflow-y-auto p-4 relative" id="text-container">
+            <!-- Barra flotante de página actual y selector de capítulo -->
+            <div class="sticky top-0 z-10 flex items-center justify-between bg-darkcard/90 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-darkborder/80 text-xs mb-4 shadow-lg">
+                <span class="text-slate-400 font-mono flex items-center gap-1">
+                    <i class="ph-bold ph-book-open text-neon-500"></i>
+                    Pág. <span id="current-page-num" class="text-white font-bold">1</span> / <span id="total-pages-num">1</span>
+                </span>
+
+                <!-- Selector rápido de capítulos desplegable -->
+                <div class="flex-1 mx-2 overflow-hidden max-w-[180px] sm:max-w-xs">
+                    <select id="chapter-select" class="w-full bg-darkbg border border-darkborder text-neon-500 text-[11px] font-mono rounded-xl px-2 py-1 truncate focus:outline-none focus:border-neon-500">
+                        <option value="">Detectando Capítulos...</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-1">
+                    <button id="prev-page-btn" class="p-1 hover:text-neon-500 text-slate-300 transition"><i class="ph-bold ph-caret-left text-base"></i></button>
+                    <button id="next-page-btn" class="p-1 hover:text-neon-500 text-slate-300 transition"><i class="ph-bold ph-caret-right text-base"></i></button>
+                </div>
+            </div>
+
+            <!-- Contenedor del texto interactivo -->
+            <div id="reader-content" class="text-slate-200 text-base leading-relaxed tracking-wide space-y-4 pb-12 font-sans select-none">
+                <!-- El contenido del libro se inyectará aquí -->
+            </div>
+        </section>
+
+        <!-- MITAD INFERIOR: Panel de Control del Audiolibro -->
+        <section class="bg-darkcard p-4 flex flex-col justify-between shrink-0 border-t border-darkborder shadow-2xl relative">
+            
+            <!-- Info del Libro y Ecualizador -->
+            <div class="flex items-center justify-between mb-3">
+                <div class="overflow-hidden pr-2">
+                    <h2 id="pdf-title" class="text-sm font-bold text-white truncate">Nombre del Documento.pdf</h2>
+                    <p id="speech-status-text" class="text-[11px] text-neon-500 font-mono flex items-center gap-1.5 mt-0.5">
+                        <span class="w-2 h-2 rounded-full bg-neon-500 animate-pulse"></span>
+                        Listo para reproducir
+                    </p>
+                </div>
+
+                <!-- Ecualizador Animado -->
+                <div id="equalizer" class="flex items-end gap-1 h-5 px-2 py-1 bg-darkbg rounded-xl border border-darkborder paused">
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                </div>
+            </div>
+
+            <!-- Barra de Progreso de Lectura -->
+            <div class="mb-4">
+                <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-1">
+                    <span id="progress-text">0% completado</span>
+                    <span id="page-estimate">Página 1</span>
+                </div>
+                <div class="relative w-full h-2 bg-darkbg rounded-full overflow-hidden border border-darkborder cursor-pointer" id="progress-bar-container">
+                    <div id="progress-bar" class="h-full bg-gradient-to-r from-neon-600 to-neon-400 rounded-full w-0 transition-all duration-200"></div>
+                </div>
+            </div>
+
+            <!-- Controles Principales de Reproducción (Play, Pause, Stop + Navegación) -->
+            <div class="flex items-center justify-between">
+                
+                <!-- Selector de Velocidad -->
+                <button id="speed-btn" class="w-10 h-10 rounded-2xl bg-darkbg border border-darkborder text-slate-300 font-mono text-xs font-semibold flex items-center justify-center hover:border-neon-500 hover:text-neon-500 transition active:scale-90">
+                    1.0x
+                </button>
+
+                <!-- Botonera central (Skip, Play, Pause, Stop) -->
+                <div class="flex items-center space-x-2">
+                    <!-- Oración anterior -->
+                    <button id="btn-prev-sentence" class="w-10 h-10 rounded-2xl bg-darkbg border border-darkborder text-slate-300 flex items-center justify-center hover:text-neon-500 hover:border-neon-500/40 transition active:scale-90" title="Frase Anterior">
+                        <i class="ph-bold ph-skip-back text-lg"></i>
+                    </button>
+
+                    <!-- PLAY -->
+                    <button id="btn-play" class="w-12 h-12 rounded-2xl bg-neon-500 text-darkbg flex items-center justify-center text-xl font-bold shadow-lg shadow-neon-500/20 neon-glow hover:bg-neon-400 transition active:scale-95" title="Reproducir">
+                        <i class="ph-fill ph-play"></i>
+                    </button>
+
+                    <!-- PAUSE -->
+                    <button id="btn-pause" class="w-12 h-12 rounded-2xl bg-darkbg border-2 border-neon-500 text-neon-500 flex items-center justify-center text-xl font-bold hover:bg-neon-500/10 transition active:scale-95" title="Pausar">
+                        <i class="ph-fill ph-pause"></i>
+                    </button>
+
+                    <!-- STOP -->
+                    <button id="btn-stop" class="w-12 h-12 rounded-2xl bg-darkbg border border-red-500/50 text-red-400 flex items-center justify-center text-xl font-bold hover:bg-red-500/10 hover:border-red-500 transition active:scale-95" title="Detener">
+                        <i class="ph-fill ph-stop"></i>
+                    </button>
+
+                    <!-- Oración siguiente -->
+                    <button id="btn-next-sentence" class="w-10 h-10 rounded-2xl bg-darkbg border border-darkborder text-slate-300 flex items-center justify-center hover:text-neon-500 hover:border-neon-500/40 transition active:scale-90" title="Siguiente Frase">
+                        <i class="ph-bold ph-skip-forward text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Modo Auto-scroll -->
+                <button id="autoscroll-btn" class="w-10 h-10 rounded-2xl bg-darkbg border border-neon-500 text-neon-500 font-mono text-xs flex items-center justify-center transition active:scale-90" title="Auto-scroll activado">
+                    <i class="ph-bold ph-arrows-down-up text-lg"></i>
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- DRAWER / SLIDE-OVER DE CAPÍTULOS DETALLADO -->
+    <div id="chapters-drawer" class="fixed inset-0 z-50 hidden">
+        <div id="chapters-backdrop" class="absolute inset-0 bg-darkbg/80 backdrop-blur-sm"></div>
+        <div class="absolute top-0 right-0 h-full w-4/5 max-w-xs bg-darkcard border-l border-darkborder p-5 flex flex-col justify-between drawer-slide">
+            <div>
+                <div class="flex items-center justify-between border-b border-darkborder pb-3 mb-4">
+                    <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                        <i class="ph-bold ph-list-bullets text-neon-500"></i>
+                        Índice de Capítulos
+                    </h3>
+                    <button id="close-chapters" class="text-slate-400 hover:text-white">
+                        <i class="ph-bold ph-x text-lg"></i>
+                    </button>
+                </div>
+
+                <div id="chapters-list-container" class="space-y-1.5 overflow-y-auto max-h-[75vh] pr-1">
+                    <!-- Los elementos de capítulo se insertarán dinámicamente -->
+                </div>
+            </div>
+
+            <div class="border-t border-darkborder pt-3">
+                <button id="export-session-drawer-btn" class="w-full bg-darkbg border border-neon-500/50 text-neon-500 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-neon-500 hover:text-darkbg transition">
+                    <i class="ph-bold ph-download-simple text-base"></i>
+                    Exportar Sesión LOGOVOX
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIGURACIÓN DE VOZ -->
+    <div id="settings-modal" class="fixed inset-0 bg-darkbg/80 backdrop-blur-md z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-darkcard border border-darkborder w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 space-y-5">
+            <div class="flex justify-between items-center border-b border-darkborder pb-3">
+                <h3 class="font-bold text-base text-white flex items-center gap-2">
+                    <i class="ph-bold ph-sliders-horizontal text-neon-500"></i>
+                    Ajustes de Voz y Lectura
+                </h3>
+                <button id="close-settings" class="text-slate-400 hover:text-white p-1">
+                    <i class="ph-bold ph-x text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Selector de Voz TTS -->
+            <div class="space-y-2">
+                <label class="text-xs font-mono text-slate-400 block">VOZ SINTETIZADA</label>
+                <select id="voice-select" class="w-full bg-darkbg border border-darkborder text-white text-xs rounded-2xl p-3 focus:outline-none focus:border-neon-500">
+                </select>
+            </div>
+
+            <!-- Tono / Pitch -->
+            <div class="space-y-2">
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-slate-400">TONO DE LA VOZ</span>
+                    <span id="pitch-val" class="text-neon-500">1.0</span>
+                </div>
+                <input type="range" id="pitch-range" min="0.5" max="1.5" step="0.1" value="1.0" class="w-full accent-neon-500 bg-darkbg h-2 rounded-lg cursor-pointer">
+            </div>
+
+            <!-- Tamaño de fuente -->
+            <div class="space-y-2">
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-slate-400">TAMAÑO DE TEXTO</span>
+                    <span id="fontsize-val" class="text-neon-500">16px</span>
+                </div>
+                <input type="range" id="fontsize-range" min="14" max="24" step="1" value="16" class="w-full accent-neon-500 bg-darkbg h-2 rounded-lg cursor-pointer">
+            </div>
+
+            <button id="save-settings-btn" class="w-full bg-neon-500 text-darkbg font-bold py-3 rounded-2xl text-xs uppercase tracking-wider neon-glow hover:bg-neon-400 transition">
+                Aplicar Cambios
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LÓGICA DE LA APLICACIÓN -->
+    <script>
+        // Configuración de PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // Variables Globales
+        let pdfDoc = null;
+        let currentPage = 1;
+        let totalPages = 0;
+        let pageTexts = [];
+        let chapters = []; // Estructura: [{ title, page, sentenceIndex }]
+        let currentSentenceIndex = 0;
+        let sentences = [];
+        let isPlaying = false;
+        let autoScrollEnabled = true;
+
+        // Configuración TTS (Text-to-Speech)
+        const synth = window.speechSynthesis;
+        let voices = [];
+        let selectedVoice = null;
+        let speechRate = 1.0;
+        let speechPitch = 1.0;
+        let currentUtterance = null;
+        let isParsingInBackground = false;
+
+        // Elementos DOM
+        const pdfInput = document.getElementById('pdf-input');
+        const emptyState = document.getElementById('empty-state');
+        const loaderState = document.getElementById('loader-state');
+        const appView = document.getElementById('app-view');
+        const loaderStatus = document.getElementById('loader-status');
+        const pdfLoadProgress = document.getElementById('pdf-load-progress');
+        const pdfLoadPercent = document.getElementById('pdf-load-percent');
+        const btnExecuteAudiobook = document.getElementById('btn-execute-audiobook');
+
+        const pdfTitle = document.getElementById('pdf-title');
+        const readerContent = document.getElementById('reader-content');
+        
+        const currentPageNum = document.getElementById('current-page-num');
+        const totalPagesNum = document.getElementById('total-pages-num');
+        const prevPageBtn = document.getElementById('prev-page-btn');
+        const nextPageBtn = document.getElementById('next-page-btn');
+
+        const btnPlay = document.getElementById('btn-play');
+        const btnPause = document.getElementById('btn-pause');
+        const btnStop = document.getElementById('btn-stop');
+        const btnPrevSentence = document.getElementById('btn-prev-sentence');
+        const btnNextSentence = document.getElementById('btn-next-sentence');
+
+        // Botones superiores de audio
+        const hdrPlay = document.getElementById('hdr-play');
+        const hdrPause = document.getElementById('hdr-pause');
+        const hdrStop = document.getElementById('hdr-stop');
+        const headerAudioControls = document.getElementById('header-audio-controls');
+
+        // Capítulos y Menús
+        const chapterSelect = document.getElementById('chapter-select');
+        const chaptersBtn = document.getElementById('chapters-btn');
+        const chaptersDrawer = document.getElementById('chapters-drawer');
+        const chaptersBackdrop = document.getElementById('chapters-backdrop');
+        const closeChapters = document.getElementById('close-chapters');
+        const chaptersListContainer = document.getElementById('chapters-list-container');
+        const chaptersCountBadge = document.getElementById('chapters-count-badge');
+        const exportSessionBtn = document.getElementById('export-session-btn');
+        const exportSessionDrawerBtn = document.getElementById('export-session-drawer-btn');
+
+        const speedBtn = document.getElementById('speed-btn');
+        const autoscrollBtn = document.getElementById('autoscroll-btn');
+        const equalizer = document.getElementById('equalizer');
+        const speechStatusText = document.getElementById('speech-status-text');
+        
+        const progressBar = document.getElementById('progress-bar');
+        const progressBarContainer = document.getElementById('progress-bar-container');
+        const progressText = document.getElementById('progress-text');
+        const pageEstimate = document.getElementById('page-estimate');
+
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettings = document.getElementById('close-settings');
+        const voiceSelect = document.getElementById('voice-select');
+        const pitchRange = document.getElementById('pitch-range');
+        const pitchVal = document.getElementById('pitch-val');
+        const fontsizeRange = document.getElementById('fontsize-range');
+        const fontsizeVal = document.getElementById('fontsize-val');
+
+        const speeds = [0.8, 1.0, 1.2, 1.5, 1.75, 2.0];
+
+        // --- INICIALIZACIÓN DE VOCES ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = initVoices;
+            }
+        });
+
+        function initVoices() {
+            voices = synth.getVoices();
+            voiceSelect.innerHTML = '';
+            
+            let spanishVoices = voices.filter(v => v.lang.includes('es'));
+            let displayVoices = spanishVoices.length > 0 ? spanishVoices : voices;
+
+            displayVoices.forEach((voice, index) => {
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.setAttribute('data-name', voice.name);
+                if (voice.default || (spanishVoices.length > 0 && index === 0)) {
+                    option.selected = true;
+                    selectedVoice = voice;
+                }
+                voiceSelect.appendChild(option);
+            });
+        }
+
+        // --- CARGA Y DETECCIÓN DE ARCHIVO RÁPIDA (CARGA INSTANTÁNEA) ---
+        pdfInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Si es una sesión guardada de LOGOVOX
+            if (file.name.endsWith('.logovox') || file.type === 'application/json') {
+                loadLogovoxSessionFile(file);
+                return;
+            }
+
+            if (file.type !== 'application/pdf') {
+                alert('Por favor, selecciona un archivo PDF o una sesión .logovox válida.');
+                return;
+            }
+
+            pdfTitle.textContent = file.name;
+            emptyState.classList.add('hidden');
+            loaderState.classList.remove('hidden');
+            btnExecuteAudiobook.classList.add('hidden');
+            
+            pdfLoadProgress.style.width = '10%';
+            pdfLoadPercent.textContent = '10%';
+            loaderStatus.textContent = 'Abriendo estructura del documento...';
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                totalPages = pdfDoc.numPages;
+                totalPagesNum.textContent = totalPages;
+
+                // Inicializar arreglo de páginas vacías
+                pageTexts = new Array(totalPages).fill(null);
+                chapters = [];
+
+                // Cargar inmediatamente solo la PÁGINA 1 para inicio ultra-rápido
+                loaderStatus.textContent = 'Cargando texto inicial...';
+                await loadSinglePageText(1);
+
+                generateFallbackChapters();
+                populateChaptersMenu();
+
+                // Habilitar botón de reproducir de inmediato
+                pdfLoadProgress.style.width = '100%';
+                pdfLoadPercent.textContent = '100%';
+                loaderStatus.textContent = '¡Listo! Puedes empezar a escuchar ahora mismo.';
+                btnExecuteAudiobook.classList.remove('hidden');
+
+                // Iniciar escaneo ligero de fondo para el resto de páginas
+                startBackgroundParsing();
+
+            } catch (err) {
+                console.error(err);
+                alert('Error al abrir el PDF: ' + err.message);
+                loaderState.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+            }
+        });
+
+        // Extrae el texto de una página específica bajo demanda
+        async function loadSinglePageText(pageNumber) {
+            if (pageTexts[pageNumber - 1] !== null) {
+                return pageTexts[pageNumber - 1];
+            }
+            try {
+                const page = await pdfDoc.getPage(pageNumber);
+                const textContent = await page.getTextContent();
+                
+                // Extracción mejorada de texto vectorial reconstruyendo líneas y espacios
+                let lastY, text = '';
+                for (let item of textContent.items) {
+                    if (lastY !== item.transform[5] && lastY !== undefined) {
+                        text += '\n';
+                    } else if (text.length > 0 && !text.endsWith(' ') && !text.endsWith('\n')) {
+                        text += ' ';
+                    }
+                    text += item.str;
+                    lastY = item.transform[5];
+                }
+
+                let pageString = text.replace(/[ \t]+/g, ' ').trim();
+
+                // Si no se detectó texto vectorial suficiente (menor a 20 caracteres), aplicamos OCR mediante Tesseract
+                if (!pageString || pageString.length < 20) {
+                    pageString = await extractTextWithOCR(page, pageNumber);
+                }
+                
+                const finalStr = pageString || `(Página ${pageNumber} sin contenido de texto reconocible)`;
+                pageTexts[pageNumber - 1] = finalStr;
+
+                // Detección ligera de capítulos sobre esta página
+                detectChaptersInText(finalStr, pageNumber);
+
+                return finalStr;
+            } catch (e) {
+                console.error(`Error al leer pág ${pageNumber}`, e);
+                pageTexts[pageNumber - 1] = `(Error al leer página ${pageNumber})`;
+                return pageTexts[pageNumber - 1];
+            }
+        }
+
+        // Función de respaldo OCR para páginas escaneadas o en formato imagen
+        async function extractTextWithOCR(page, pageNumber) {
+            try {
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                if (window.Tesseract) {
+                    const result = await Tesseract.recognize(canvas, 'spa', {
+                        logger: m => console.log(`OCR Pág ${pageNumber}:`, m)
+                    });
+                    return result.data.text.replace(/\s+/g, ' ').trim();
+                }
+            } catch (err) {
+                console.warn(`Falló el OCR en la página ${pageNumber}:`, err);
+            }
+            return '';
+        }
+
+        // Procesa el resto del libro en segundo plano de manera ligera sin congelar la app
+        async function startBackgroundParsing() {
+            if (isParsingInBackground) return;
+            isParsingInBackground = true;
+
+            for (let i = 2; i <= totalPages; i++) {
+                if (!pdfDoc) break;
+                if (pageTexts[i - 1] === null) {
+                    await loadSinglePageText(i);
+                    // Pausa breve para dar aire al hilo principal
+                    await new Promise(r => setTimeout(r, 20));
+                }
+            }
+            
+            // Actualizar menú de capítulos con los hallazgos en segundo plano
+            if (chapters.length > 0) {
+                populateChaptersMenu();
+            }
+            isParsingInBackground = false;
+        }
+
+        // --- DETECCIÓN INTELIGENTE DE CAPÍTULOS ---
+        function detectChaptersInText(text, pageNumber) {
+            const chapterRegex = /(?:cap[ií]tulo|chapter|secci[oó]n|parte)\s+([0-9ivxlcdm]+)?[\s\:\.-]*([^\n\r.]+)?/gi;
+            let match;
+            while ((match = chapterRegex.exec(text)) !== null) {
+                const fullMatch = match[0].trim();
+                if (fullMatch.length > 4 && fullMatch.length < 70) {
+                    const isDuplicate = chapters.some(c => c.page === pageNumber && c.title.toLowerCase() === fullMatch.toLowerCase());
+                    if (!isDuplicate) {
+                        chapters.push({
+                            title: fullMatch,
+                            page: pageNumber
+                        });
+                    }
+                }
+            }
+        }
+
+        function generateFallbackChapters() {
+            chapters = [];
+            const step = Math.max(1, Math.floor(totalPages / 10));
+            for (let p = 1; p <= totalPages; p += step) {
+                chapters.push({
+                    title: `Capítulo - Pág. ${p}`,
+                    page: p
+                });
+            }
+        }
+
+        function populateChaptersMenu() {
+            chapterSelect.innerHTML = '';
+            chaptersListContainer.innerHTML = '';
+            chaptersCountBadge.textContent = chapters.length;
+
+            chapters.forEach((chap, idx) => {
+                const option = document.createElement('option');
+                option.value = idx;
+                option.textContent = chap.title;
+                chapterSelect.appendChild(option);
+
+                const item = document.createElement('button');
+                item.className = 'w-full text-left p-2.5 rounded-xl bg-darkbg hover:bg-neon-500/10 border border-darkborder hover:border-neon-500/40 text-xs text-slate-300 hover:text-neon-500 transition flex items-center justify-between group';
+                item.innerHTML = `
+                    <span class="font-medium truncate pr-2">${chap.title}</span>
+                    <span class="text-[10px] font-mono bg-darkcard px-2 py-0.5 rounded-md text-slate-400 group-hover:text-neon-500">Pág ${chap.page}</span>
+                `;
+                item.addEventListener('click', () => {
+                    jumpToChapter(idx);
+                    closeChaptersDrawer();
+                });
+                chaptersListContainer.appendChild(item);
+            });
+
+            chaptersBtn.classList.remove('hidden');
+            exportSessionBtn.classList.remove('hidden');
+            headerAudioControls.classList.remove('hidden');
+        }
+
+        function jumpToChapter(index) {
+            const chap = chapters[index];
+            if (chap) {
+                loadPageContent(chap.page);
+                chapterSelect.value = index;
+            }
+        }
+
+        chapterSelect.addEventListener('change', (e) => {
+            jumpToChapter(e.target.value);
+        });
+
+        // --- EXPORTAR E IMPORTAR SESIONES LIGERAS DE LECTURA ---
+        function exportLogovoxSession() {
+            const sessionData = {
+                version: 'LOGOVOX-1.0',
+                title: pdfTitle.textContent,
+                totalPages: totalPages,
+                currentPage: currentPage,
+                currentSentenceIndex: currentSentenceIndex,
+                chapters: chapters,
+                timestamp: new Date().toISOString()
+            };
+
+            const jsonStr = JSON.stringify(sessionData);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${pdfTitle.textContent.replace('.pdf', '')}_LOGOVOX.logovox`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function loadLogovoxSessionFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    pdfTitle.textContent = data.title || file.name;
+                    totalPages = data.totalPages || 1;
+                    totalPagesNum.textContent = totalPages;
+                    chapters = data.chapters || [];
+                    pageTexts = new Array(totalPages).fill(null);
+
+                    if (chapters.length === 0) generateFallbackChapters();
+
+                    populateChaptersMenu();
+
+                    emptyState.classList.add('hidden');
+                    loaderState.classList.add('hidden');
+                    appView.classList.remove('hidden');
+
+                    currentPage = data.currentPage || 1;
+                    currentSentenceIndex = data.currentSentenceIndex || 0;
+
+                    loadPageContent(currentPage);
+
+                } catch (err) {
+                    alert('Error al importar archivo de sesión LOGOVOX: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        exportSessionBtn.addEventListener('click', exportLogovoxSession);
+        exportSessionDrawerBtn.addEventListener('click', exportLogovoxSession);
+
+        // --- BOTONES DE CONTROL SUPERIOR E INFERIOR SINCRONIZADOS ---
+        hdrPlay.addEventListener('click', playAudio);
+        hdrPause.addEventListener('click', pauseAudio);
+        hdrStop.addEventListener('click', () => {
+            stopAudio();
+            currentSentenceIndex = 0;
+            highlightCurrentSentence();
+            updateProgress();
+        });
+
+        // --- MANEJO DEL DRAWER DE CAPÍTULOS ---
+        chaptersBtn.addEventListener('click', () => chaptersDrawer.classList.remove('hidden'));
+        closeChapters.addEventListener('click', closeChaptersDrawer);
+        chaptersBackdrop.addEventListener('click', closeChaptersDrawer);
+
+        function closeChaptersDrawer() {
+            chaptersDrawer.classList.add('hidden');
+        }
+
+        // Botón "Ejecutar Audiolibro"
+        btnExecuteAudiobook.addEventListener('click', () => {
+            loaderState.classList.add('hidden');
+            appView.classList.remove('hidden');
+            currentPage = 1;
+            loadPageContent(currentPage);
+        });
+
+        // --- CARGAR TEXTO DE LA PÁGINA ON-DEMAND ---
+        async function loadPageContent(pageNumber) {
+            stopAudio();
+            currentPage = pageNumber;
+            currentPageNum.textContent = currentPage;
+            pageEstimate.textContent = `Página ${currentPage}`;
+
+            readerContent.innerHTML = `<p class="text-xs font-mono text-neon-500 animate-pulse">Cargando página ${currentPage}...</p>`;
+
+            let text = pageTexts[currentPage - 1];
+            if (text === null && pdfDoc) {
+                text = await loadSinglePageText(currentPage);
+            }
+
+            text = text || '';
+            
+            // Fragmentar texto en oraciones/párrafos
+            sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+            if (sentences.length === 0 && text.length > 0) sentences = [text];
+
+            currentSentenceIndex = 0;
+            renderInteractiveText();
+            updateProgress();
+        }
+
+        // Renderizar spans interactivos para cada frase
+        function renderInteractiveText() {
+            readerContent.innerHTML = '';
+
+            sentences.forEach((sentence, index) => {
+                const sentenceSpan = document.createElement('span');
+                sentenceSpan.className = 'sentence-block hover:text-neon-400 cursor-pointer transition rounded px-1 inline text-slate-300';
+                sentenceSpan.dataset.index = index;
+                sentenceSpan.textContent = sentence + ' ';
+                
+                sentenceSpan.addEventListener('click', () => {
+                    jumpToSentence(index);
+                });
+
+                readerContent.appendChild(sentenceSpan);
+            });
+
+            highlightCurrentSentence();
+        }
+
+        // Resaltado de la oración activa
+        function highlightCurrentSentence() {
+            const spans = readerContent.querySelectorAll('.sentence-block');
+            spans.forEach((span, i) => {
+                if (i === currentSentenceIndex) {
+                    span.className = 'sentence-block highlight-word font-medium shadow-sm';
+                    if (autoScrollEnabled) {
+                        span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                } else {
+                    span.className = 'sentence-block hover:text-neon-400 cursor-pointer transition rounded px-1 inline text-slate-300';
+                }
+            });
+        }
+
+        // --- CONTROL DE AUDIO Y SINTETIZADOR ---
+        async function playCurrentSentence() {
+            if (currentSentenceIndex >= sentences.length) {
+                if (currentPage < totalPages) {
+                    await loadPageContent(currentPage + 1);
+                    playCurrentSentence();
+                } else {
+                    stopAudio();
+                    speechStatusText.textContent = 'Lectura del libro finalizada';
+                }
+                return;
+            }
+
+            synth.cancel();
+
+            const textToSpeak = sentences[currentSentenceIndex];
+            if (!textToSpeak || textToSpeak.trim() === '') {
+                currentSentenceIndex++;
+                playCurrentSentence();
+                return;
+            }
+
+            setTimeout(() => {
+                currentUtterance = new SpeechSynthesisUtterance(textToSpeak);
+                if (selectedVoice) currentUtterance.voice = selectedVoice;
+                
+                if (selectedVoice && selectedVoice.lang) {
+                    currentUtterance.lang = selectedVoice.lang;
+                } else {
+                    currentUtterance.lang = 'es-ES';
+                }
+
+                currentUtterance.rate = speechRate;
+                currentUtterance.pitch = speechPitch;
+
+                currentUtterance.onstart = () => {
+                    isPlaying = true;
+                    equalizer.classList.remove('paused');
+                    speechStatusText.textContent = 'Reproduciendo...';
+                    highlightCurrentSentence();
+                };
+
+                currentUtterance.onend = () => {
+                    if (isPlaying) {
+                        currentSentenceIndex++;
+                        updateProgress();
+                        playCurrentSentence();
+                    }
+                };
+
+                currentUtterance.onerror = (e) => {
+                    if (e.error === 'interrupted' || e.error === 'canceled') {
+                        return;
+                    }
+                    console.error('Error en sintetizador TTS:', e);
+                    isPlaying = false;
+                    equalizer.classList.add('paused');
+                    speechStatusText.textContent = 'Error en síntesis de voz';
+                };
+
+                synth.speak(currentUtterance);
+            }, 30);
+        }
+
+        function playAudio() {
+            if (synth.paused) {
+                synth.resume();
+                isPlaying = true;
+                equalizer.classList.remove('paused');
+                speechStatusText.textContent = 'Reproduciendo...';
+            } else {
+                if (synth.speaking) {
+                    synth.cancel();
+                }
+                playCurrentSentence();
+            }
+        }
+
+        function pauseAudio() {
+            if (isPlaying) {
+                synth.pause();
+                isPlaying = false;
+                equalizer.classList.add('paused');
+                speechStatusText.textContent = 'Pausado';
+            }
+        }
+
+        function stopAudio() {
+            isPlaying = false;
+            synth.cancel();
+            equalizer.classList.add('paused');
+            speechStatusText.textContent = 'Detenido';
+        }
+
+        function jumpToSentence(index) {
+            currentSentenceIndex = index;
+            highlightCurrentSentence();
+            updateProgress();
+            if (isPlaying) {
+                playCurrentSentence();
+            }
+        }
+
+        function updateProgress() {
+            if (sentences.length === 0) return;
+            const progress = ((currentSentenceIndex + 1) / sentences.length) * 100;
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${Math.round(progress)}% de pág. ${currentPage}`;
+        }
+
+        // --- EVENT LISTENERS PARA CONTROLES ---
+        btnPlay.addEventListener('click', playAudio);
+        btnPause.addEventListener('click', pauseAudio);
+        btnStop.addEventListener('click', () => {
+            stopAudio();
+            currentSentenceIndex = 0;
+            highlightCurrentSentence();
+            updateProgress();
+        });
+
+        btnNextSentence.addEventListener('click', () => {
+            if (currentSentenceIndex < sentences.length - 1) {
+                jumpToSentence(currentSentenceIndex + 1);
+            } else if (currentPage < totalPages) {
+                loadPageContent(currentPage + 1);
+                if (isPlaying) playCurrentSentence();
+            }
+        });
+
+        btnPrevSentence.addEventListener('click', () => {
+            if (currentSentenceIndex > 0) {
+                jumpToSentence(currentSentenceIndex - 1);
+            } else if (currentPage > 1) {
+                loadPageContent(currentPage - 1);
+                currentSentenceIndex = sentences.length - 1;
+                highlightCurrentSentence();
+                if (isPlaying) playCurrentSentence();
+            }
+        });
+
+        prevPageBtn.addEventListener('click', () => {
+            if (currentPage > 1) loadPageContent(currentPage - 1);
+        });
+
+        nextPageBtn.addEventListener('click', () => {
+            if (currentPage < totalPages) loadPageContent(currentPage + 1);
+        });
+
+        speedBtn.addEventListener('click', () => {
+            let nextIndex = (speeds.indexOf(speechRate) + 1) % speeds.length;
+            speechRate = speeds[nextIndex];
+            speedBtn.textContent = `${speechRate.toFixed(1)}x`;
+            if (isPlaying) playCurrentSentence();
+        });
+
+        autoscrollBtn.addEventListener('click', () => {
+            autoScrollEnabled = !autoScrollEnabled;
+            if (autoScrollEnabled) {
+                autoscrollBtn.classList.add('border-neon-500', 'text-neon-500');
+                autoscrollBtn.classList.remove('border-darkborder', 'text-slate-500');
+                highlightCurrentSentence();
+            } else {
+                autoscrollBtn.classList.remove('border-neon-500', 'text-neon-500');
+                autoscrollBtn.classList.add('border-darkborder', 'text-slate-500');
+            }
+        });
+
+        progressBarContainer.addEventListener('click', (e) => {
+            const rect = progressBarContainer.getBoundingClientRect();
+            const clickPos = (e.clientX - rect.left) / rect.width;
+            const targetIndex = Math.floor(clickPos * sentences.length);
+            jumpToSentence(Math.min(targetIndex, sentences.length - 1));
+        });
+
+        // --- CONFIGURACIÓN Y MODAL ---
+        settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+        closeSettings.addEventListener('click', () => settingsModal.classList.add('hidden'));
+
+        pitchRange.addEventListener('input', (e) => {
+            speechPitch = parseFloat(e.target.value);
+            pitchVal.textContent = speechPitch.toFixed(1);
+        });
+
+        fontsizeRange.addEventListener('input', (e) => {
+            const size = e.target.value;
+            fontsizeVal.textContent = `${size}px`;
+            readerContent.style.fontSize = `${size}px`;
+        });
+
+        document.getElementById('save-settings-btn').addEventListener('click', () => {
+            const selectedOption = voiceSelect.selectedOptions[0];
+            if (selectedOption) {
+                const voiceName = selectedOption.getAttribute('data-name');
+                selectedVoice = voices.find(v => v.name === voiceName);
+            }
+            settingsModal.classList.add('hidden');
+            if (isPlaying) playCurrentSentence();
+        });
+    </script>
+</body>
+</html>
